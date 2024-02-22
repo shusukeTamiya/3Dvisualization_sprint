@@ -173,9 +173,7 @@
 		import WEBGL from "three/addons/capabilities/WebGL.js";
 		import { VRButton } from 'three/addons/webxr/VRButton.js';
 		import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
-		import { OculusHandModel } from 'three/addons/webxr/OculusHandModel.js';
-		import { OculusHandPointerModel } from 'three/addons/webxr/OculusHandPointerModel.js';
-		import { World, System, Component, TagComponent, Types } from 'three/addons/libs/ecsy.module.js';
+		import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
 
 
@@ -183,249 +181,17 @@
 		var context, canvas;
 		var plan;
 		let points, points_rgb, points_rgbD, points_xyY, points_xyYD, points_xyY_s;
+		let hand1, hand2;
+		let controller1, controller2;
+		let controllerGrip1, controllerGrip2;
+		const group = new THREE.Group();
+		
 
 		// VIDEO AND THE ASSOCIATED TEXTURE
 		var video, videoTexture;
 
 		var imageProcessing, imageProcessingMaterial;
 		const clock = new THREE.Clock();
-
-		class Draggable extends Component { }
-
-		Draggable.schema = {
-			// draggable states: [detached, hovered, to-be-attached, attached, to-be-detached]
-			state: { type: Types.String, default: 'none' },
-			originalParent: { type: Types.Ref, default: null },
-			attachedPointer: { type: Types.Ref, default: null }
-		};
-
-		class DraggableSystem extends System {
-
-			execute( /*delta, time*/) {
-
-				this.queries.draggable.results.forEach(entity => {
-
-					const draggable = entity.getMutableComponent(Draggable);
-					const object = entity.getComponent(Object3D).object;
-					if (draggable.originalParent == null) {
-
-						draggable.originalParent = object.parent;
-
-					}
-
-					switch (draggable.state) {
-
-						case 'to-be-attached':
-							draggable.attachedPointer.children[0].attach(object);
-							draggable.state = 'attached';
-							break;
-						case 'to-be-detached':
-							draggable.originalParent.attach(object);
-							draggable.state = 'detached';
-							break;
-						default:
-							object.scale.set(1, 1, 1);
-
-					}
-
-				});
-
-			}
-
-		}
-
-		DraggableSystem.queries = {
-			draggable: {
-				components: [Draggable]
-			}
-		};
-
-		class Intersectable extends TagComponent { }
-
-		class HandRaySystem extends System {
-
-			init(attributes) {
-
-				this.handPointers = attributes.handPointers;
-
-			}
-
-			execute( /*delta, time*/) {
-
-				this.handPointers.forEach(hp => {
-
-					let distance = null;
-					let intersectingEntity = null;
-					this.queries.intersectable.results.forEach(entity => {
-
-						const object = entity.getComponent(Object3D).object;
-						const intersections = hp.intersectObject(object, false);
-						if (intersections && intersections.length > 0) {
-
-							if (distance == null || intersections[0].distance < distance) {
-
-								distance = intersections[0].distance;
-								intersectingEntity = entity;
-
-							}
-
-						}
-
-					});
-					if (distance) {
-
-						hp.setCursor(distance);
-						if (intersectingEntity.hasComponent(Button)) {
-
-							const button = intersectingEntity.getMutableComponent(Button);
-							if (hp.isPinched()) {
-
-								button.currState = 'pressed';
-
-							} else if (button.currState != 'pressed') {
-
-								button.currState = 'hovered';
-
-							}
-
-						}
-
-						if (intersectingEntity.hasComponent(Draggable)) {
-
-							const draggable = intersectingEntity.getMutableComponent(Draggable);
-							const object = intersectingEntity.getComponent(Object3D).object;
-							object.scale.set(1.1, 1.1, 1.1);
-							if (hp.isPinched()) {
-
-								if (!hp.isAttached() && draggable.state != 'attached') {
-
-									draggable.state = 'to-be-attached';
-									draggable.attachedPointer = hp;
-									hp.setAttached(true);
-
-								}
-
-							} else {
-
-								if (hp.isAttached() && draggable.state == 'attached') {
-
-									console.log('hello');
-									draggable.state = 'to-be-detached';
-									draggable.attachedPointer = null;
-									hp.setAttached(false);
-
-								}
-
-							}
-
-						}
-
-					} else {
-
-						hp.setCursor(1.5);
-
-					}
-
-				});
-
-			}
-
-		}
-
-		HandRaySystem.queries = {
-			intersectable: {
-				components: [Intersectable]
-			}
-		};
-
-		class HandsInstructionText extends TagComponent { }
-
-		class InstructionSystem extends System {
-
-			init(attributes) {
-
-				this.controllers = attributes.controllers;
-
-			}
-
-			execute( /*delta, time*/) {
-
-				let visible = false;
-				this.controllers.forEach(controller => {
-
-					if (controller.visible) {
-
-						visible = true;
-
-					}
-
-				});
-
-				this.queries.instructionTexts.results.forEach(entity => {
-
-					const object = entity.getComponent(Object3D).object;
-					object.visible = visible;
-
-				});
-
-			}
-
-		}
-
-		InstructionSystem.queries = {
-			instructionTexts: {
-				components: [HandsInstructionText]
-			}
-		};
-
-		class OffsetFromCamera extends Component { }
-
-		OffsetFromCamera.schema = {
-			x: { type: Types.Number, default: 0 },
-			y: { type: Types.Number, default: 0 },
-			z: { type: Types.Number, default: 0 },
-		};
-
-		class NeedCalibration extends TagComponent { }
-
-		class CalibrationSystem extends System {
-
-			init(attributes) {
-
-				this.camera = attributes.camera;
-				this.renderer = attributes.renderer;
-
-			}
-
-			execute( /*delta, time*/) {
-
-				this.queries.needCalibration.results.forEach(entity => {
-
-					if (this.renderer.xr.getSession()) {
-
-						const offset = entity.getComponent(OffsetFromCamera);
-						const object = entity.getComponent(Object3D).object;
-						const xrCamera = this.renderer.xr.getCamera();
-						object.position.x = xrCamera.position.x + offset.x;
-						object.position.y = xrCamera.position.y + offset.y;
-						object.position.z = xrCamera.position.z + offset.z;
-						entity.removeComponent(NeedCalibration);
-
-					}
-
-				});
-
-			}
-
-		}
-
-		CalibrationSystem.queries = {
-			needCalibration: {
-				components: [NeedCalibration]
-			}
-		};
-
-
 
 		init();
 		animate();
@@ -436,28 +202,35 @@
 			}
 			container = document.createElement("div");
 			document.body.appendChild(container);
+			
+			
 
 			canvas = document.createElement("canvas");
 			context = canvas.getContext("webgl2");
 			document.body.appendChild(canvas);
 
 			scene = new THREE.Scene();
-			const size = 1;
+			scene.add(group)
+			const size = 0.2;
 			const divisions = 10;
 			const gridHelper = new THREE.GridHelper(size, divisions);
 			gridHelper.position.y = -0.1;
 			scene.add(gridHelper);
+			group.add(gridHelper);
 
 			const axesHelper = new THREE.AxesHelper(5);
 			axesHelper.position.z = -0.1
 			axesHelper.position.y = -0.1
 			axesHelper.position.x = -0.1
+			axesHelper.size = 0.01;
 			scene.add(axesHelper);
+			group.add(axesHelper);
 
 			var geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
 			var edges = new THREE.EdgesGeometry(geometry);
 			var cube = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
 			scene.add(cube);
+			group.add(cube);
 
 			const amb_light = new THREE.AmbientLight();
 			scene.add(amb_light);
@@ -473,7 +246,6 @@
 			renderer.setSize(window.innerWidth, window.innerHeight);
 			renderer.shadowMap.enabled = false;
 			renderer.xr.enabled = true;
-			renderer.xr.cameraAutoUpdate = false;
 			document.body.appendChild(VRButton.createButton(renderer));
 
 
@@ -486,7 +258,8 @@
 				10
 			);
 
-			camera.position.z = 0.7;
+			camera.position.set( 0, 1.6, 0 );
+
 			controls = new OrbitControls(camera, renderer.domElement);
 			controls.minDistance = 0.005;
 			controls.maxDistance = 1.0;
@@ -495,37 +268,45 @@
 			controls.update();
 
 			// controllers
-			const controller1 = renderer.xr.getController( 0 );
+
+			controller1 = renderer.xr.getController( 0 );
 			scene.add( controller1 );
 
-			const controller2 = renderer.xr.getController( 1 );
+			controller2 = renderer.xr.getController( 1 );
 			scene.add( controller2 );
 
 			const controllerModelFactory = new XRControllerModelFactory();
+			const handModelFactory = new XRHandModelFactory();
 
 			// Hand 1
-			const controllerGrip1 = renderer.xr.getControllerGrip(0);
-			controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
-			scene.add(controllerGrip1);
+			controllerGrip1 = renderer.xr.getControllerGrip( 0 );
+			controllerGrip1.add( controllerModelFactory.createControllerModel( controllerGrip1 ) );
+			scene.add( controllerGrip1 );
 
-			const hand1 = renderer.xr.getHand(0);
-			hand1.add(new OculusHandModel(hand1));
-			const handPointer1 = new OculusHandPointerModel(hand1, controller1);
-			hand1.add(handPointer1);
+			hand1 = renderer.xr.getHand( 0 );
+			hand1.add( handModelFactory.createHandModel( hand1 ) );
 
-			scene.add(hand1);
+			scene.add( hand1 );
 
 			// Hand 2
-			const controllerGrip2 = renderer.xr.getControllerGrip(1);
-			controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-			scene.add(controllerGrip2);
+			controllerGrip2 = renderer.xr.getControllerGrip( 1 );
+			controllerGrip2.add( controllerModelFactory.createControllerModel( controllerGrip2 ) );
+			scene.add( controllerGrip2 );
 
-			const hand2 = renderer.xr.getHand(1);
-			hand2.add(new OculusHandModel(hand2));
-			const handPointer2 = new OculusHandPointerModel(hand2, controller2);
-			hand2.add(handPointer2);
-			scene.add(hand2);
+			hand2 = renderer.xr.getHand( 1 );
+			hand2.add( handModelFactory.createHandModel( hand2 ) );
+			scene.add( hand2 );
 
+			
+
+			var geometry = new THREE.BufferGeometry().setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 1 ) ] );
+
+			const line = new THREE.Line( geometry );
+			line.name = 'line';
+			line.scale.z = 5;
+
+			controller1.add( line.clone() );
+			controller2.add( line.clone() );
 
 
 
@@ -624,7 +405,7 @@
 				points.position.y = -0.1;
 
 				scene.add(points);
-
+				group.add(points);
 
 				var geometry_rgb = new THREE.BufferGeometry();
 				var positions_rgb = [];
@@ -640,7 +421,8 @@
 				geometry_rgb.setAttribute('position', new THREE.Float32BufferAttribute(positions_rgb, 3));
 				geometry_rgb.computeBoundingSphere();
 				points_rgb = new THREE.Points(geometry_rgb, colorSpaceMaterial2);
-				scene.add(points_rgb)
+				scene.add(points_rgb);
+				group.add(points_rgb);
 
 				var geometry_rgbD = new THREE.BufferGeometry();
 				var positions_rgbD = [];
@@ -657,6 +439,7 @@
 				geometry_rgbD.computeBoundingSphere();
 				points_rgbD = new THREE.Points(geometry_rgbD, colorSpaceMaterial3);
 				// scene.add(points_rgbD);
+				group.add(points_rgbD);
 
 				var geometry_xyY = new THREE.BufferGeometry();
 				var positions_xyY = [];
@@ -674,6 +457,7 @@
 				points_xyY = new THREE.Points(geometry_xyY, colorSpaceMaterial4);
 				points_xyY.position.set(-0.1, -0.1, -0.1)
 				// scene.add(points_xyY);
+				group.add(points_xyY);
 
 				var geometry_xyYD = new THREE.BufferGeometry();
 				var positions_xyYD = [];
@@ -691,6 +475,7 @@
 				points_xyYD = new THREE.Points(geometry_xyYD, colorSpaceMaterial5);
 				points_xyYD.position.set(-0.1, -0.1, -0.1)
 				// scene.add(points_xyYD);
+				group.add(points_xyYD);
 
 				var geometry_xyY_s = new THREE.BufferGeometry();
 				var positions_xyY_s = [];
@@ -709,6 +494,7 @@
 				points_xyY_s = new THREE.Points(geometry_xyY_s, colorSpaceMaterial6);
 				points_xyY_s.position.set(-0.1, -0.1, -0.1)
 				// scene.add(points_xyY_s);
+				group.add(points_xyY_s);
 
 
 
@@ -728,7 +514,8 @@
 				plan.receiveShadow = false;
 				plan.castShadow = false;
 				scene.add(plan);
-
+				group.add(plan);
+				group.position.set(0, 1.5, -1)
 
 				video.play();
 			};
@@ -808,17 +595,15 @@
 		});
 
 
-		function render() {
-			renderer.clear();
 
+
+		function render() {
 			renderer.render(scene, camera);
 		}
 
 		function animate() {
-			const delta = clock.getDelta();
 			const elapsedTime = clock.elapsedTime;
 			renderer.xr.updateCamera( camera );
-			requestAnimationFrame(animate);
 			controls.update();
 			render();
 		}
@@ -829,6 +614,8 @@
 			renderer.setSize(window.innerWidth, window.innerHeight);
 			render();
 		}
+		renderer.setAnimationLoop(render);
+
 	</script>
 </body>
 
