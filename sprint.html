@@ -177,11 +177,18 @@
 		import { OculusHandPointerModel } from 'three/addons/webxr/OculusHandPointerModel.js';
 		import { World, System, Component, TagComponent, Types } from 'three/addons/libs/ecsy.module.js';
 
-		class Object3D extends Component { }
 
-		Object3D.schema = {
-			object: { type: Types.Ref }
-		};
+
+		var camera, controls, scene, renderer, container;
+		var context, canvas;
+		var plan;
+		let points, points_rgb, points_rgbD, points_xyY, points_xyYD, points_xyY_s;
+
+		// VIDEO AND THE ASSOCIATED TEXTURE
+		var video, videoTexture;
+
+		var imageProcessing, imageProcessingMaterial;
+		const clock = new THREE.Clock();
 
 		class Draggable extends Component { }
 
@@ -259,6 +266,7 @@
 
 								distance = intersections[0].distance;
 								intersectingEntity = entity;
+
 							}
 
 						}
@@ -354,6 +362,7 @@
 				});
 
 				this.queries.instructionTexts.results.forEach(entity => {
+
 					const object = entity.getComponent(Object3D).object;
 					object.visible = visible;
 
@@ -382,6 +391,7 @@
 		class CalibrationSystem extends System {
 
 			init(attributes) {
+
 				this.camera = attributes.camera;
 				this.renderer = attributes.renderer;
 
@@ -409,19 +419,12 @@
 
 		}
 
-		
+		CalibrationSystem.queries = {
+			needCalibration: {
+				components: [NeedCalibration]
+			}
+		};
 
-
-		const world = new World();
-		var camera, controls, scene, renderer, container;
-		var context, canvas;
-		var plan;
-		let points, points_rgb, points_rgbD, points_xyY, points_xyYD, points_xyY_s;
-
-		// VIDEO AND THE ASSOCIATED TEXTURE
-		var video, videoTexture;
-
-		var imageProcessing, imageProcessingMaterial;
 
 
 		init();
@@ -490,6 +493,41 @@
 			controls.enableRotate = true;
 			controls.addEventListener("change", render);
 			controls.update();
+
+			// controllers
+			const controller1 = renderer.xr.getController( 0 );
+			scene.add( controller1 );
+
+			const controller2 = renderer.xr.getController( 1 );
+			scene.add( controller2 );
+
+			const controllerModelFactory = new XRControllerModelFactory();
+
+			// Hand 1
+			const controllerGrip1 = renderer.xr.getControllerGrip(0);
+			controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+			scene.add(controllerGrip1);
+
+			const hand1 = renderer.xr.getHand(0);
+			hand1.add(new OculusHandModel(hand1));
+			const handPointer1 = new OculusHandPointerModel(hand1, controller1);
+			hand1.add(handPointer1);
+
+			scene.add(hand1);
+
+			// Hand 2
+			const controllerGrip2 = renderer.xr.getControllerGrip(1);
+			controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+			scene.add(controllerGrip2);
+
+			const hand2 = renderer.xr.getHand(1);
+			hand2.add(new OculusHandModel(hand2));
+			const handPointer2 = new OculusHandPointerModel(hand2, controller2);
+			hand2.add(handPointer2);
+			scene.add(hand2);
+
+
+
 
 			video = document.createElement("video");
 			video.src = "video.mp4";
@@ -777,6 +815,9 @@
 		}
 
 		function animate() {
+			const delta = clock.getDelta();
+			const elapsedTime = clock.elapsedTime;
+			renderer.xr.updateCamera( camera );
 			requestAnimationFrame(animate);
 			controls.update();
 			render();
