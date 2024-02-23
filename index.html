@@ -308,6 +308,24 @@
 			scene.add(hand2);
 
 
+			function collideObject(indexTip) {
+
+				for (let i = 0; i < spheres.length; i++) {
+
+					const sphere = spheres[i];
+					const distance = indexTip.getWorldPosition(tmpVector1).distanceTo(sphere.getWorldPosition(tmpVector2));
+
+					if (distance < sphere.geometry.boundingSphere.radius * sphere.scale.x) {
+
+						return sphere;
+
+					}
+
+				}
+
+				return null;
+
+			}
 
 			function onPinchStartRight(event) {
 
