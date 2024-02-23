@@ -309,22 +309,17 @@
 
 
 			function collideObject(indexTip) {
+				const objects = [plan, cube];
+				for (let i = 0; i < objects.length; i++) {
+					const object = objects[i];
 
-				for (let i = 0; i < spheres.length; i++) {
+					const distance = indexTip.getWorldPosition(tmpVector1).distanceTo(object.getWorldPosition(tmpVector2));
 
-					const sphere = spheres[i];
-					const distance = indexTip.getWorldPosition(tmpVector1).distanceTo(sphere.getWorldPosition(tmpVector2));
-
-					if (distance < sphere.geometry.boundingSphere.radius * sphere.scale.x) {
-
-						return sphere;
-
+					if (distance < object.geometry.boundingSphere.radius * object.scale.x) {
+						return object;
 					}
-
 				}
-
 				return null;
-
 			}
 
 			function onPinchStartRight(event) {
